@@ -6,10 +6,9 @@ from app.domain.entities.user import UserRole
 
 
 class UserCreateDTO(BaseModel):
-    """DTO for creating a user"""
+    """DTO for creating a user (email list; no password)."""
     username: str
     email: EmailStr
-    password: str
     role: UserRole = UserRole.USER
 
 
@@ -32,10 +31,4 @@ class UserResponseDTO(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
-
-
-class UserLoginDTO(BaseModel):
-    """DTO for user login"""
-    username: str
-    password: str
 

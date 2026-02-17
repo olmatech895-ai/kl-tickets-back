@@ -1,4 +1,5 @@
 """Application settings"""
+
 from pydantic_settings import BaseSettings
 from typing import Optional, List
 
@@ -13,7 +14,11 @@ class Settings(BaseSettings):
 
     # API
     API_V1_PREFIX: str = "/api/v1"
-    CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"]
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+    ]
 
     # Database
     DATABASE_URL: Optional[str] = None
@@ -43,7 +48,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB
     ALLOWED_IMAGE_EXTENSIONS: List[str] = [".jpg", ".jpeg", ".png", ".gif", ".webp"]
-    
+
     # Telegram Bot
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_BOT_ENABLED: bool = False
@@ -57,7 +62,7 @@ class Settings(BaseSettings):
         """Get database URL from settings or environment"""
         if self.DATABASE_URL:
             return self.DATABASE_URL
-        
+
         if self.DATABASE_TYPE == "postgresql":
             return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         elif self.DATABASE_TYPE == "sqlite":
@@ -67,4 +72,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-

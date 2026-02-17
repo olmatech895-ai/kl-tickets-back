@@ -49,8 +49,8 @@ class UserUseCases:
             role=user_data.role,
         )
 
-        # Create user via repository
-        created_user = await self.user_repository.create(user, user_data.password)
+        # Create user via repository (no password)
+        created_user = await self.user_repository.create(user)
 
         # Convert to DTO
         return UserResponseDTO(
@@ -129,14 +129,9 @@ class UserUseCases:
         """Delete user"""
         return await self.user_repository.delete(user_id)
 
-    async def authenticate_user(self, username: str, password: str) -> Optional[UserResponseDTO]:
-        """Authenticate user"""
-        is_valid = await self.user_repository.verify_password(username, password)
-        
-        if not is_valid:
-            return None
-
-        user = await self.user_repository.get_by_username(username)
+    async def authenticate_user(self, email: str) -> Optional[UserResponseDTO]:
+        """Authenticate by email only (no password). User must exist in DB."""
+        user = await self.user_repository.get_by_email(email)
         if not user:
             return None
 

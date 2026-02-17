@@ -1,5 +1,4 @@
-"""User repository implementation with database"""
-import bcrypt
+"""User repository implementation with database. No passwords; auth by email only."""
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.domain.entities.user import User, UserRole
@@ -13,23 +12,6 @@ class UserRepositoryDB(UserRepository):
     def __init__(self, db: Session):
         self.db = db
 
-    def _hash_password(self, password: str) -> str:
-        """Hash a password using bcrypt"""
-        salt = bcrypt.gensalt()
-        password_bytes = password.encode('utf-8')
-        hashed = bcrypt.hashpw(password_bytes, salt)
-        return hashed.decode('utf-8')
-
-    def _verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        """Verify a password using bcrypt"""
-        try:
-            plain_bytes = plain_password.encode('utf-8')
-            hashed_bytes = hashed_password.encode('utf-8')
-            return bcrypt.checkpw(plain_bytes, hashed_bytes)
-        except Exception as e:
-            print(f"[DEBUG] Exception in _verify_password: {e}")
-            return False
-
     def _model_to_entity(self, model: UserModel) -> User:
         """Convert UserModel to User entity"""
         return User(
@@ -42,22 +24,17 @@ class UserRepositoryDB(UserRepository):
             updated_at=model.updated_at,
         )
 
-    async def create(self, user: User, password: str) -> User:
-        """Create a new user"""
-        # Check if user already exists
+    async def create(self, user: User) -> User:
+        """Create a new user (no password)."""
         existing = await self.get_by_username(user.username)
         if existing:
             raise ValueError(f"User with username '{user.username}' already exists")
 
-        # Hash password
-        password_hash = self._hash_password(password)
-
-        # Create model
         user_model = UserModel(
-            id=user.id if user.id else None,  # Will be generated if None
+            id=user.id if user.id else None,
             username=user.username,
             email=user.email,
-            password_hash=password_hash,
+            password_hash=None,
             role=user.role,
             blocked=user.blocked,
             created_at=user.created_at,
@@ -80,6 +57,13 @@ class UserRepositoryDB(UserRepository):
     async def get_by_username(self, username: str) -> Optional[User]:
         """Get user by username"""
         user_model = self.db.query(UserModel).filter(UserModel.username == username).first()
+        if not user_model:
+            return None
+        return self._model_to_entity(user_model)
+
+    async def get_by_email(self, email: str) -> Optional[User]:
+        """Get user by email"""
+        user_model = self.db.query(UserModel).filter(UserModel.email == email.lower()).first()
         if not user_model:
             return None
         return self._model_to_entity(user_model)
@@ -182,11 +166,4 @@ class UserRepositoryDB(UserRepository):
             traceback.print_exc()
             raise ValueError(f"Failed to delete user: {str(e)}")
 
-    async def verify_password(self, username: str, password: str) -> bool:
-        """Verify user password"""
-        user_model = self.db.query(UserModel).filter(UserModel.username == username).first()
-        if not user_model:
-            return False
-
-        return self._verify_password(password, user_model.password_hash)
 

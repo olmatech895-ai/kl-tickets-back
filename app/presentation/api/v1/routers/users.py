@@ -22,12 +22,9 @@ router = APIRouter(prefix="/users", tags=["users"], redirect_slashes=False)
 async def create_user(
     user_data: UserCreateDTO,
     use_cases: UserUseCases = Depends(get_user_use_cases),
-    current_user: dict = Depends(get_admin_user),  # Only admin can create users
+    current_user: dict = Depends(get_admin_user),
 ):
-    """Create a new user (Admin only)
-    
-    Only admin can create users. Admin can assign any role (admin, it, user).
-    """
+    """Add a new user. Admin only. This is the only way to create users (no public registration)."""
     try:
         from app.domain.entities.user import UserRole
         # Get role from current user

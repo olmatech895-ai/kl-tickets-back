@@ -1,21 +1,11 @@
 """Authentication DTOs"""
 from typing import Optional
 from pydantic import BaseModel, EmailStr
-from app.domain.entities.user import UserRole
-
-
-class RegisterDTO(BaseModel):
-    """DTO for user registration"""
-    username: str
-    email: EmailStr
-    password: str
-    role: UserRole = UserRole.USER
 
 
 class LoginDTO(BaseModel):
-    """DTO for user login"""
-    username: str
-    password: str
+    """DTO for login. Authentication by email only (no password)."""
+    email: EmailStr
 
 
 class TokenResponseDTO(BaseModel):

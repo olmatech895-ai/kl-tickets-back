@@ -1,9 +1,12 @@
 """Database base configuration"""
+
+import sys
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+
 from app.infrastructure.config.settings import settings
-import sys
 
 # Get database URL
 try:
@@ -16,7 +19,9 @@ except Exception as e:
 try:
     if settings.DATABASE_TYPE == "postgresql":
         # PostgreSQL doesn't need check_same_thread
-        print(f"🔌 Connecting to PostgreSQL database: {settings.DB_NAME}@{settings.DB_HOST}:{settings.DB_PORT}")
+        print(
+            f"🔌 Connecting to PostgreSQL database: {settings.DB_NAME}@{settings.DB_HOST}:{settings.DB_PORT}"
+        )
         engine = create_engine(
             database_url,
             pool_pre_ping=True,  # Verify connections before using
@@ -59,10 +64,10 @@ Base = declarative_base()
 
 def get_db():
     """Get database session
-    
+
     This is a FastAPI dependency that provides a database session.
     The session is automatically closed after the request completes.
-    
+
     IMPORTANT: Repositories must commit their own transactions.
     This function only ensures the session is properly closed.
     """
@@ -83,7 +88,26 @@ def get_db():
 
 
 def init_db():
-    """Initialize database - create all tables"""
+    """Initialize database - create all tables and run schema migrations."""
     from app.infrastructure.database import models  # Import models to register them
+
     Base.metadata.create_all(bind=engine)
 
+    # Allow password_hash to be NULL (auth by email only)
+    if settings.DATABASE_TYPE == "postgresql":
+        try:
+            with engine.connect() as conn:
+                trans = conn.begin()
+                try:
+                    conn.execute(text("ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL"))
+                    trans.commit()
+                    print("✅ users.password_hash: NOT NULL constraint removed")
+                except Exception as inner:
+                    trans.rollback()
+                    raise inner
+        except Exception as e:
+            err = str(e).lower()
+            if "does not exist" in err or "not have a not null" in err or "constraint" in err:
+                pass  # Already nullable
+            else:
+                print(f"⚠️ Migration password_hash nullable: {e}")

@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import asyncio
 from app.infrastructure.config.settings import settings
 from app.presentation.api.v1.routers import users, auth, tickets, websocket, inventory, todos, telegram
-from app.infrastructure.init_data import init_default_admin
+from app.infrastructure.init_data import init_default_admin, init_default_users
 from app.infrastructure.storage import ensure_upload_dir
 
 
@@ -19,7 +19,6 @@ async def lifespan(app: FastAPI):
     init_db()
     print("✅ Database initialized")
     
-    # Auto-migrate: Add user_id column to todo_columns if missing
     try:
         from app.infrastructure.database.base import engine
         from sqlalchemy import text, inspect
@@ -131,9 +130,10 @@ async def lifespan(app: FastAPI):
     # Initialize upload directory
     ensure_upload_dir()
     print("✅ Upload directory initialized")
-    # Initialize default admin
+    # Initialize default admin and default users
     await init_default_admin()
-    
+    await init_default_users()
+
     try:
         yield
     except (KeyboardInterrupt, asyncio.CancelledError):
@@ -173,7 +173,8 @@ app.include_router(todos.router, prefix=settings.API_V1_PREFIX)
 app.include_router(websocket.router, prefix=settings.API_V1_PREFIX)
 app.include_router(telegram.router, prefix=settings.API_V1_PREFIX)
 
-# Mount static files for uploads
+# Mount static files for uploads (ensure directory exists before mount)
+ensure_upload_dir()
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 
