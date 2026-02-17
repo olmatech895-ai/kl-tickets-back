@@ -8,10 +8,12 @@ from app.application.dto.inventory_dto import (
 )
 from app.presentation.api.v1.dependencies import (
     get_inventory_use_cases,
+    get_user_use_cases,
     get_admin_user,
     get_admin_or_it_user,
 )
 from app.application.use_cases.inventory_use_cases import InventoryUseCases
+from app.application.use_cases.user_use_cases import UserUseCases
 from app.infrastructure.storage import save_uploaded_file
 from app.domain.entities.inventory import InventoryStatus
 
@@ -29,14 +31,11 @@ async def create_inventory_item(
     responsible: Optional[str] = Form(None),
     photo: Optional[UploadFile] = File(None),
     use_cases: InventoryUseCases = Depends(get_inventory_use_cases),
+    user_use_cases: UserUseCases = Depends(get_user_use_cases),
     current_user: dict = Depends(get_admin_or_it_user),
 ):
-    """Create a new inventory item
-    
-    Administrators and IT department can create inventory items.
-    """
+    """Create a new inventory item. Responsible can be user id or email."""
     try:
-        # Handle file upload
         photo_path = None
         if photo and photo.filename:
             try:
@@ -46,9 +45,10 @@ async def create_inventory_item(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=str(e),
                 )
-        
-        # Convert "none" to None for responsible
-        responsible_value = None if responsible == "none" or responsible == "" else responsible
+        responsible_value = None if (not responsible or responsible.strip() in ("none", "")) else responsible.strip()
+        if responsible_value and "@" in responsible_value:
+            user = await user_use_cases.authenticate_user(responsible_value)
+            responsible_value = user.id if user else responsible_value
         
         # Create DTO
         item_data = InventoryItemCreateDTO(
@@ -103,6 +103,17 @@ async def get_inventory_item(
     return item
 
 
+def _resolve_responsible_to_user_id(value: Optional[str], user_use_cases: UserUseCases) -> Optional[str]:
+    """If value looks like email, resolve to user id; otherwise return as-is (user id or None)."""
+    if not value or value in ("none", ""):
+        return None
+    if "@" in value:
+        import asyncio
+        user = asyncio.get_event_loop().run_until_complete(user_use_cases.authenticate_user(value))
+        return user.id if user else value
+    return value
+
+
 @router.put("/{item_id}", response_model=InventoryItemResponseDTO)
 async def update_inventory_item(
     item_id: str,
@@ -115,14 +126,11 @@ async def update_inventory_item(
     responsible: Optional[str] = Form(None),
     photo: Optional[UploadFile] = File(None),
     use_cases: InventoryUseCases = Depends(get_inventory_use_cases),
+    user_use_cases: UserUseCases = Depends(get_user_use_cases),
     current_user: dict = Depends(get_admin_or_it_user),
 ):
-    """Update inventory item
-    
-    Administrators and IT department can update inventory items.
-    """
+    """Update inventory item. Responsible can be user id or email (@kostalegal.com)."""
     try:
-        # Handle file upload if new photo provided
         photo_path = None
         if photo and photo.filename:
             try:
@@ -132,13 +140,12 @@ async def update_inventory_item(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=str(e),
                 )
-        
-        # Convert "none" to None for responsible
         responsible_value = None
         if responsible is not None:
-            responsible_value = None if responsible == "none" or responsible == "" else responsible
-        
-        # Create DTO with only provided fields
+            responsible_value = None if responsible.strip() in ("none", "") else responsible.strip()
+        if responsible_value and "@" in responsible_value:
+            user = await user_use_cases.authenticate_user(responsible_value)
+            responsible_value = user.id if user else responsible_value
         update_data = {}
         if name is not None:
             update_data["name"] = name
@@ -156,10 +163,38 @@ async def update_inventory_item(
             update_data["photo"] = photo_path
         if responsible is not None:
             update_data["responsible"] = responsible_value
-        
         item_data = InventoryItemUpdateDTO(**update_data)
-        item = await use_cases.update_inventory_item(item_id, item_data)
+        only_keys = list(update_data.keys()) if update_data else None
+        item = await use_cases.update_inventory_item(item_id, item_data, only_keys=only_keys)
         return item
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+
+@router.patch("/{item_id}", response_model=InventoryItemResponseDTO)
+async def patch_inventory_item(
+    item_id: str,
+    item_data: InventoryItemUpdateDTO,
+    use_cases: InventoryUseCases = Depends(get_inventory_use_cases),
+    user_use_cases: UserUseCases = Depends(get_user_use_cases),
+    current_user: dict = Depends(get_admin_or_it_user),
+):
+    """Partial update (e.g. only responsible). Accepts JSON. Responsible can be user id or email."""
+    try:
+        updates = item_data.model_dump(exclude_unset=True)
+        if "responsible" in updates:
+            val = updates["responsible"]
+            if val and "@" in str(val):
+                user = await user_use_cases.authenticate_user(val)
+                updates["responsible"] = user.id if user else val
+            elif val in (None, "", "none"):
+                updates["responsible"] = None
+        if "status" in updates and isinstance(updates["status"], str):
+            updates["status"] = InventoryStatus(updates["status"])
+        return await use_cases.update_inventory_item_partial(item_id, updates)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

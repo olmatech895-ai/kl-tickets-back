@@ -49,33 +49,54 @@ class InventoryUseCases:
         return [self._inventory_item_to_dto(item) for item in items]
 
     async def update_inventory_item(
-        self, item_id: str, item_data: InventoryItemUpdateDTO
+        self,
+        item_id: str,
+        item_data: InventoryItemUpdateDTO,
+        only_keys: Optional[List[str]] = None,
     ) -> InventoryItemResponseDTO:
-        """Update inventory item"""
+        """Update inventory item. If only_keys is set, only those fields are updated (including None)."""
         existing_item = await self.inventory_repository.get_by_id(item_id)
         if not existing_item:
             raise ValueError(f"Inventory item with ID '{item_id}' not found")
 
-        # Update only provided fields
-        if item_data.name is not None:
-            existing_item.name = item_data.name
-        if item_data.type is not None:
-            existing_item.type = item_data.type
-        if item_data.serial_number is not None:
-            existing_item.serial_number = item_data.serial_number
-        if item_data.location is not None:
-            existing_item.location = item_data.location
-        if item_data.status is not None:
-            existing_item.status = item_data.status
-        if item_data.description is not None:
-            existing_item.description = item_data.description
-        if item_data.photo is not None:
-            existing_item.photo = item_data.photo
-        if item_data.responsible is not None:
-            existing_item.responsible = item_data.responsible
+        if only_keys is not None:
+            for key in only_keys:
+                if hasattr(existing_item, key) and hasattr(item_data, key):
+                    setattr(existing_item, key, getattr(item_data, key))
+        else:
+            if item_data.name is not None:
+                existing_item.name = item_data.name
+            if item_data.type is not None:
+                existing_item.type = item_data.type
+            if item_data.serial_number is not None:
+                existing_item.serial_number = item_data.serial_number
+            if item_data.location is not None:
+                existing_item.location = item_data.location
+            if item_data.status is not None:
+                existing_item.status = item_data.status
+            if item_data.description is not None:
+                existing_item.description = item_data.description
+            if item_data.photo is not None:
+                existing_item.photo = item_data.photo
+            if item_data.responsible is not None:
+                existing_item.responsible = item_data.responsible
 
         existing_item.updated_at = datetime.utcnow()
 
+        updated_item = await self.inventory_repository.update(existing_item)
+        return self._inventory_item_to_dto(updated_item)
+
+    async def update_inventory_item_partial(
+        self, item_id: str, updates: dict
+    ) -> InventoryItemResponseDTO:
+        """Update only the provided fields (e.g. only responsible). Allows responsible=None."""
+        existing_item = await self.inventory_repository.get_by_id(item_id)
+        if not existing_item:
+            raise ValueError(f"Inventory item with ID '{item_id}' not found")
+        for key, value in updates.items():
+            if hasattr(existing_item, key):
+                setattr(existing_item, key, value)
+        existing_item.updated_at = datetime.utcnow()
         updated_item = await self.inventory_repository.update(existing_item)
         return self._inventory_item_to_dto(updated_item)
 

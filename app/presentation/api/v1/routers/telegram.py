@@ -55,11 +55,14 @@ async def get_telegram_link(
     
     Returns a deep link that user can open in Telegram.
     When user clicks Start, bot will automatically register them.
+    If Telegram bot is not configured on server, returns success=False and message (no 503).
     """
     if not telegram_bot.enabled:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Telegram bot is not enabled. Please configure TELEGRAM_BOT_TOKEN in settings."
+        return TelegramLinkResponseDTO(
+            success=False,
+            bot_link="",
+            link=None,
+            message="Telegram-бот не настроен на сервере. Обратитесь к администратору (TELEGRAM_BOT_TOKEN)."
         )
     
     # Get bot username (we'll need to fetch it from Telegram API)
