@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
     # Initialize database tables
     from app.infrastructure.database.base import init_db
     init_db()
-    print("✅ Database initialized")
+
     
     try:
         from app.infrastructure.database.base import engine
