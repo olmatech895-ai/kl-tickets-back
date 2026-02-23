@@ -130,8 +130,9 @@ def get_attendance_from_device(
     all_records: list[dict] = []
     use_json = True
     position = 0
+    timeout = settings.HIKVISION_REQUEST_TIMEOUT
 
-    with httpx.Client(timeout=30.0, auth=auth) as client:
+    with httpx.Client(timeout=timeout, auth=auth) as client:
         while len(all_records) < max_records:
             page_size = min(10, max_records - len(all_records))
             body_json = {
@@ -172,6 +173,12 @@ def get_attendance_from_device(
                         headers={"Content-Type": "application/xml; charset=utf-8", "Accept": "application/xml"},
                     )
             except Exception as e:
+                err_msg = str(e).strip().lower()
+                if "timed out" in err_msg or "timeout" in err_msg:
+                    return {
+                        "records": all_records,
+                        "error": "Таймаут подключения к устройству. Проверьте: устройство доступно с сервера (сеть/VPN), HIKVISION_DEVICE_IP в .env, при необходимости увеличьте HIKVISION_REQUEST_TIMEOUT.",
+                    }
                 return {"records": all_records, "error": f"Ошибка подключения: {e}"}
 
             if resp.status_code != 200:

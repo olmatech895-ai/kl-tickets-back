@@ -66,6 +66,8 @@ class Settings(BaseSettings):
     HIKVISION_DEVICE_PORT: int = 80
     HIKVISION_DEVICE_USER: Optional[str] = None
     HIKVISION_DEVICE_PASSWORD: Optional[str] = None
+    # Таймаут запроса к устройству (секунды). На сервере увеличьте, если устройство далеко по сети.
+    HIKVISION_REQUEST_TIMEOUT: float = 60.0
 
     class Config:
         env_file = ".env"
