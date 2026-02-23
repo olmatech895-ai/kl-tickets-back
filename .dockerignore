@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv
+env
+.venv
+.env
+*.env
+.env.*
+!.env.example
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Local data
+*.db
+*.sqlite
+*.sqlite3
+tickets.db
+uploads/
+
+# Docs / scripts (not needed in image)
+*.md
+!README.md
+run.bat
+run.sh
+setup.py
+
+# Tests (optional: remove if you want to run tests in image)
+tests
+pytest.ini
+.pytest_cache
+.coverage
+htmlcov

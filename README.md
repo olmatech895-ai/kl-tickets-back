@@ -25,7 +25,20 @@ Backend API для системы управления тикетами, пос�
 
 ## Быстрый старт
 
-### 1. Установка зависимостей
+### Запуск через Docker (рекомендуется)
+
+Из корня `backend/`:
+
+```bash
+docker compose up -d --build
+```
+
+API: http://localhost:1234  
+Документация: http://localhost:1234/docs  
+
+Переменные окружения (БД, секреты) заданы в `docker-compose.yml`; при необходимости создайте `.env` или отредактируйте `environment` в `docker-compose.yml`. Подробнее про слои и зависимости — в [ARCHITECTURE.md](ARCHITECTURE.md).
+
+### 1. Установка зависимостей (локально)
 
 ```bash
 cd backend
@@ -64,7 +77,7 @@ cp .env.example .env
 python run.py
 
 # Вариант 2: Используя uvicorn напрямую
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 1234
 
 # Windows
 run.bat
@@ -74,15 +87,15 @@ chmod +x run.sh
 ./run.sh
 ```
 
-Сервер будет доступен по адресу: http://localhost:8000
+Сервер будет доступен по адресу: http://localhost:1234
 
 ## API Документация
 
 После запуска приложения доступна интерактивная документация:
 
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-- **Health Check**: http://localhost:8000/health
+- **Swagger UI**: http://localhost:1234/docs
+- **ReDoc**: http://localhost:1234/redoc
+- **Health Check**: http://localhost:1234/health
 
 ## Структура проекта
 
@@ -149,7 +162,7 @@ API использует JWT токены для аутентификации. �
 ### Регистрация
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/auth/register" \
+curl -X POST "http://localhost:1234/api/v1/auth/register" \
   -H "Content-Type: application/json" \
   -d '{
     "username": "john_doe",
@@ -167,7 +180,7 @@ curl -X POST "http://localhost:8000/api/v1/auth/register" \
 ### Вход
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/auth/login" \
+curl -X POST "http://localhost:1234/api/v1/auth/login" \
   -H "Content-Type: application/json" \
   -d '{
     "username": "john_doe",
@@ -178,7 +191,7 @@ curl -X POST "http://localhost:8000/api/v1/auth/login" \
 ### Использование токена
 
 ```bash
-curl -X GET "http://localhost:8000/api/v1/auth/me" \
+curl -X GET "http://localhost:1234/api/v1/auth/me" \
   -H "Authorization: Bearer <access_token>"
 ```
 
@@ -189,7 +202,7 @@ curl -X GET "http://localhost:8000/api/v1/auth/me" \
 ### Создание пользователя
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/users/" \
+curl -X POST "http://localhost:1234/api/v1/users/" \
   -H "Content-Type: application/json" \
   -d '{
     "username": "testuser",
@@ -202,7 +215,7 @@ curl -X POST "http://localhost:8000/api/v1/users/" \
 ### Аутентификация
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/users/auth/login" \
+curl -X POST "http://localhost:1234/api/v1/users/auth/login" \
   -H "Content-Type: application/json" \
   -d '{
     "username": "testuser",
@@ -213,7 +226,7 @@ curl -X POST "http://localhost:8000/api/v1/users/auth/login" \
 ### Получение всех пользователей
 
 ```bash
-curl -X GET "http://localhost:8000/api/v1/users/"
+curl -X GET "http://localhost:1234/api/v1/users/"
 ```
 
 ## Разработка

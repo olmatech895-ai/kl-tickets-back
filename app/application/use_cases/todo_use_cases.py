@@ -1,4 +1,5 @@
 """Todo use cases"""
+from datetime import date as date_type
 from typing import List, Optional
 from app.domain.entities.todo import Todo, TodoComment, TodoListItem, TodoAttachment
 # TodoStatus теперь строка
@@ -13,6 +14,7 @@ from app.application.dto.todo_dto import (
     TodoCommentResponseDTO,
     TodoListItemCreateDTO,
     TodoListItemResponseDTO,
+    TodoAttachmentResponseDTO,
 )
 from datetime import datetime
 import uuid
@@ -47,6 +49,9 @@ class TodoUseCases:
             read=True,
             project=todo_data.project,
             due_date=todo_data.due_date,
+            all_day=todo_data.all_day,
+            notify_when_due=todo_data.notify_when_due,
+            calendar_only=todo_data.calendar_only,
             created_by=created_by_user_id,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
@@ -67,14 +72,33 @@ class TodoUseCases:
         todos = await self.todo_repository.get_all()
         return [self._todo_to_dto(todo) for todo in todos]
 
-    async def get_user_todos(self, user_id: str, include_archived: bool = False) -> List[TodoResponseDTO]:
-        """Get todos for a user (created by or assigned to)
+    async def get_user_todos(
+        self,
+        user_id: str,
+        include_archived: bool = False,
+        due_date: Optional[date_type] = None,
+        calendar_only: Optional[bool] = None,
+        all_day: Optional[bool] = None,
+    ) -> List[TodoResponseDTO]:
+        """Get todos for a user (created by or assigned to).
         
         Args:
             user_id: User ID
             include_archived: If True, includes archived todos. Default False.
+            due_date: If set, return only todos with due_date on this date (for calendar day view).
+            calendar_only: If True, only calendar-only items; if False, only board items. None = all.
+            all_day: If True, only «весь день»; if False, only «по часам». None = all.
         """
         todos = await self.todo_repository.get_by_user_id(user_id, include_archived=include_archived)
+        if due_date is not None:
+            todos = [
+                t for t in todos
+                if t.due_date is not None and t.due_date.date() == due_date
+            ]
+        if calendar_only is not None:
+            todos = [t for t in todos if getattr(t, "calendar_only", False) == calendar_only]
+        if all_day is not None:
+            todos = [t for t in todos if getattr(t, "all_day", False) == all_day]
         return [self._todo_to_dto(todo) for todo in todos]
     
     async def get_user_archived_todos(self, user_id: str) -> List[TodoResponseDTO]:
@@ -114,6 +138,12 @@ class TodoUseCases:
             existing_todo.project = todo_data.project
         if todo_data.due_date is not None:
             existing_todo.due_date = todo_data.due_date
+        if todo_data.all_day is not None:
+            existing_todo.all_day = todo_data.all_day
+        if todo_data.notify_when_due is not None:
+            existing_todo.notify_when_due = todo_data.notify_when_due
+        if todo_data.calendar_only is not None:
+            existing_todo.calendar_only = todo_data.calendar_only
         if todo_data.background_image is not None:
             existing_todo.background_image = todo_data.background_image
         if todo_data.todo_lists is not None:
@@ -233,6 +263,48 @@ class TodoUseCases:
         updated_todo = await self.todo_repository.update(todo)
         return self._todo_to_dto(updated_todo)
 
+    async def add_attachment(
+        self,
+        todo_id: str,
+        filename: str,
+        file_path: str,
+        file_size: int,
+        file_type: Optional[str] = None,
+        is_background: bool = False,
+    ) -> TodoResponseDTO:
+        """Add attachment to todo (любой формат и расширение)."""
+        todo = await self.todo_repository.get_by_id(todo_id)
+        if not todo:
+            raise ValueError(f"Todo with ID '{todo_id}' not found")
+        attachment = TodoAttachment(
+            id=str(uuid.uuid4()),
+            filename=filename,
+            file_path=file_path,
+            file_type=file_type,
+            file_size=file_size,
+            is_background=is_background,
+            created_at=datetime.utcnow(),
+        )
+        todo.attachments.append(attachment)
+        todo.updated_at = datetime.utcnow()
+        updated_todo = await self.todo_repository.update(todo)
+        return self._todo_to_dto(updated_todo)
+
+    async def delete_attachment(self, todo_id: str, attachment_id: str) -> TodoResponseDTO:
+        """Remove attachment from todo and delete file from storage."""
+        todo = await self.todo_repository.get_by_id(todo_id)
+        if not todo:
+            raise ValueError(f"Todo with ID '{todo_id}' not found")
+        att = next((a for a in todo.attachments if a.id == attachment_id), None)
+        if not att:
+            raise ValueError(f"Attachment with ID '{attachment_id}' not found")
+        from app.infrastructure.storage import delete_file
+        delete_file(att.file_path)
+        todo.attachments = [a for a in todo.attachments if a.id != attachment_id]
+        todo.updated_at = datetime.utcnow()
+        updated_todo = await self.todo_repository.update(todo)
+        return self._todo_to_dto(updated_todo)
+
     def _todo_to_dto(self, todo: Todo) -> TodoResponseDTO:
         """Convert Todo entity to TodoResponseDTO"""
         return TodoResponseDTO(
@@ -278,6 +350,9 @@ class TodoUseCases:
             read=todo.read,
             project=todo.project,
             due_date=todo.due_date,
+            all_day=getattr(todo, "all_day", False),
+            notify_when_due=getattr(todo, "notify_when_due", False),
+            calendar_only=getattr(todo, "calendar_only", False),
             created_by=todo.created_by,
             created_at=todo.created_at,
             updated_at=todo.updated_at,

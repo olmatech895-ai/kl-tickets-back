@@ -58,7 +58,12 @@ class TodoAttachmentResponseDTO(BaseModel):
 
 
 class TodoCreateDTO(BaseModel):
-    """DTO for creating a todo"""
+    """DTO for creating a todo or calendar event.
+    
+    Два типа добавления:
+    - Только в календарь (Событие в календаре): calendar_only=True, title, due_date с временем, notify_when_due.
+    - Календарь + доска (Задача на доску): calendar_only=False, title, status (колонка), due_date.
+    """
     title: str
     description: Optional[str] = None
     status: str = "todo"
@@ -68,6 +73,9 @@ class TodoCreateDTO(BaseModel):
     in_focus: bool = False
     project: Optional[str] = None
     due_date: Optional[datetime] = None
+    all_day: bool = False
+    notify_when_due: bool = False
+    calendar_only: bool = False
 
 
 class TodoUpdateDTO(BaseModel):
@@ -82,6 +90,9 @@ class TodoUpdateDTO(BaseModel):
     read: Optional[bool] = None
     project: Optional[str] = None
     due_date: Optional[datetime] = None
+    all_day: Optional[bool] = None
+    notify_when_due: Optional[bool] = None
+    calendar_only: Optional[bool] = None
     background_image: Optional[str] = None
     todo_lists: Optional[List[TodoListItemCreateDTO]] = None
 
@@ -102,6 +113,9 @@ class TodoResponseDTO(BaseModel):
     read: bool = True
     project: Optional[str] = None
     due_date: Optional[datetime] = None
+    all_day: bool = False
+    notify_when_due: bool = False
+    calendar_only: bool = False
     created_by: str
     created_at: datetime
     updated_at: datetime

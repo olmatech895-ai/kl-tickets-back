@@ -1,6 +1,8 @@
 """Todos API router"""
-from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List
+from datetime import date
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from typing import List, Optional
+from app.infrastructure.storage import save_todo_attachment
 from app.application.dto.todo_dto import (
     TodoCreateDTO,
     TodoUpdateDTO,
@@ -97,17 +99,22 @@ async def create_todo(
 async def get_all_todos(
     use_cases: TodoUseCases = Depends(get_todo_use_cases),
     current_user: dict = Depends(get_current_active_user),
+    due_date: Optional[date] = Query(None, description="Фильтр по дате срока (календарь: YYYY-MM-DD)"),
+    calendar_only: Optional[bool] = Query(None, description="true=только календарь, false=только доска, не задано=все"),
+    all_day: Optional[bool] = Query(None, description="true=только задачи на весь день (ВЕСЬ ДЕНЬ), false=только по часам, не задано=все"),
 ):
-    """Get all todos for current user
+    """Get all todos for current user.
     
-    Each user sees only their own todos:
-    - Todos created by the user
-    - Todos where the user is assigned (in assigned_to list)
-    
-    When a user adds someone to assigned_to, the todo becomes shared for all assigned users.
+    - due_date: только задачи с сроком в этот день (для календаря).
+    - calendar_only: true — только «Событие в календаре»; false — только «Задача на доску»; не задано — все.
+    - all_day: true — только блок «ВЕСЬ ДЕНЬ»; false — только «ПО ЧАСАМ»; не задано — все.
     """
-    # Все пользователи (включая admin/it) видят только свои todos
-    return await use_cases.get_user_todos(current_user["id"])
+    return await use_cases.get_user_todos(
+        current_user["id"],
+        due_date=due_date,
+        calendar_only=calendar_only,
+        all_day=all_day,
+    )
 
 
 @router.get("/my", response_model=List[TodoResponseDTO])
@@ -187,9 +194,6 @@ async def get_todo_columns(
         ]
         return columns_response
     except Exception as e:
-        print(f"❌ Error getting todo columns: {e}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error getting columns: {str(e)}",
@@ -290,9 +294,6 @@ async def update_todo_columns(
             detail=str(e),
         )
     except Exception as e:
-        print(f"❌ Error updating todo columns: {e}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error updating columns: {str(e)}",
@@ -348,9 +349,6 @@ async def delete_todo_column(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error deleting todo column: {e}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting column: {str(e)}",
@@ -1024,6 +1022,94 @@ async def delete_todo_list_item(
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+
+@router.post("/{todo_id}/attachments", response_model=TodoResponseDTO)
+async def add_attachment(
+    todo_id: str,
+    file: UploadFile = File(...),
+    is_background: bool = Form(False),
+    use_cases: TodoUseCases = Depends(get_todo_use_cases),
+    current_user: dict = Depends(get_current_active_user),
+):
+    """Add attachment to todo. Любой формат и расширение. Лимит размера задаётся в настройках (TODO_MAX_UPLOAD_SIZE, по умолчанию 100MB)."""
+    existing_todo = await use_cases.get_todo(todo_id)
+    if not existing_todo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Todo with ID '{todo_id}' not found",
+        )
+    if existing_todo.created_by != current_user["id"] and current_user["id"] not in existing_todo.assigned_to:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to add attachments to this todo.",
+        )
+    if not file.filename or not file.filename.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename is required",
+        )
+    try:
+        file_path, size, content_type = await save_todo_attachment(file)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    try:
+        todo = await use_cases.add_attachment(
+            todo_id=todo_id,
+            filename=file.filename,
+            file_path=file_path,
+            file_size=size,
+            file_type=content_type,
+            is_background=is_background,
+        )
+        todo_dict = todo.model_dump(mode="json") if hasattr(todo, "model_dump") else todo.dict() if hasattr(todo, "dict") else todo
+        try:
+            await manager.broadcast_to_users(
+                {"type": "todo_attachment_added", "todo": todo_dict, "todo_id": todo_id},
+                list(set([todo_dict.get("created_by")] + (todo_dict.get("assigned_to") or []))),
+            )
+        except Exception:
+            pass
+        return todo
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.delete("/{todo_id}/attachments/{attachment_id}", response_model=TodoResponseDTO)
+async def delete_attachment(
+    todo_id: str,
+    attachment_id: str,
+    use_cases: TodoUseCases = Depends(get_todo_use_cases),
+    current_user: dict = Depends(get_current_active_user),
+):
+    """Delete attachment from todo and remove file from storage."""
+    existing_todo = await use_cases.get_todo(todo_id)
+    if not existing_todo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Todo with ID '{todo_id}' not found",
+        )
+    if existing_todo.created_by != current_user["id"] and current_user["id"] not in existing_todo.assigned_to:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to delete attachments from this todo.",
+        )
+    try:
+        todo = await use_cases.delete_attachment(todo_id, attachment_id)
+        todo_dict = todo.model_dump(mode="json") if hasattr(todo, "model_dump") else todo.dict() if hasattr(todo, "dict") else todo
+        try:
+            await manager.broadcast_to_users(
+                {"type": "todo_attachment_deleted", "todo": todo_dict, "todo_id": todo_id, "attachment_id": attachment_id},
+                list(set([todo_dict.get("created_by")] + (todo_dict.get("assigned_to") or []))),
+            )
+        except Exception:
+            pass
+        return todo
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND if "not found" in str(e).lower() else status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
 

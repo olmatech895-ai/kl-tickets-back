@@ -2,6 +2,7 @@
 import os
 import uuid
 from pathlib import Path
+from typing import Optional
 from fastapi import UploadFile
 from app.infrastructure.config.settings import settings
 
@@ -53,16 +54,37 @@ async def save_uploaded_file(file: UploadFile) -> str:
     return f"/uploads/{unique_filename}"
 
 
+async def save_todo_attachment(file: UploadFile) -> tuple[str, int, Optional[str]]:
+    """Save todo attachment (любой формат и расширение). Returns (url_path, size_bytes, content_type)."""
+    if not file.filename or not file.filename.strip():
+        raise ValueError("Filename is required")
+    contents = await file.read()
+    size = len(contents)
+    max_size = getattr(settings, "TODO_MAX_UPLOAD_SIZE", 100 * 1024 * 1024)
+    if max_size > 0 and size > max_size:
+        raise ValueError(
+            f"File size exceeds limit ({size // (1024*1024)}MB). Max: {max_size // (1024*1024)}MB"
+        )
+    ext = get_file_extension(file.filename) if get_file_extension(file.filename) else ""
+    unique_filename = f"{uuid.uuid4()}{ext}"
+    upload_dir = ensure_upload_dir()
+    path = upload_dir / unique_filename
+    with open(path, "wb") as f:
+        f.write(contents)
+    content_type = getattr(file, "content_type", None) or None
+    return f"/uploads/{unique_filename}", size, content_type
+
+
 def delete_file(file_path: str) -> bool:
     """Delete file from storage"""
     try:
         # Remove /uploads/ prefix if present
         if file_path.startswith("/uploads/"):
             file_path = file_path.replace("/uploads/", "")
-        
+
         upload_dir = ensure_upload_dir()
         full_path = upload_dir / file_path
-        
+
         if full_path.exists():
             full_path.unlink()
             return True

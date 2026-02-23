@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import asyncio
 from app.infrastructure.config.settings import settings
-from app.presentation.api.v1.routers import users, auth, tickets, websocket, inventory, todos, telegram
+from app.presentation.api.v1.routers import users, auth, tickets, websocket, inventory, todos, telegram, report
 from app.infrastructure.init_data import init_default_admin, init_default_users
 from app.infrastructure.storage import ensure_upload_dir
 
@@ -13,23 +13,41 @@ from app.infrastructure.storage import ensure_upload_dir
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events"""
-    print("🚀 Initializing application...")
     # Initialize database tables
     from app.infrastructure.database.base import init_db
     init_db()
 
-    
+    try:
+        from app.infrastructure.database.base import engine
+        from app.infrastructure.config.settings import settings as _s
+        from sqlalchemy import text, inspect
+        inspector = inspect(engine)
+        if _s.DATABASE_TYPE == "postgresql" and "todos" in inspector.get_table_names():
+            cols = [c["name"] for c in inspector.get_columns("todos")]
+            if "notify_when_due" not in cols:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE todos ADD COLUMN notify_when_due BOOLEAN NOT NULL DEFAULT false"))
+                    conn.commit()
+            if "calendar_only" not in cols:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE todos ADD COLUMN calendar_only BOOLEAN NOT NULL DEFAULT false"))
+                    conn.commit()
+            if "all_day" not in cols:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE todos ADD COLUMN all_day BOOLEAN NOT NULL DEFAULT false"))
+                    conn.commit()
+    except Exception:
+        pass
+
     try:
         from app.infrastructure.database.base import engine
         from sqlalchemy import text, inspect
-        
         inspector = inspect(engine)
         if 'todo_columns' in inspector.get_table_names():
             columns = inspector.get_columns('todo_columns')
             has_user_id = any(col['name'] == 'user_id' for col in columns)
             
             if not has_user_id:
-                print("🔄 Auto-migrating: Adding user_id column to todo_columns...")
                 with engine.connect() as conn:
                     trans = conn.begin()
                     try:
@@ -85,7 +103,6 @@ async def lifespan(app: FastAPI):
                                 # Drop the old unique index
                                 conn.execute(text("DROP INDEX IF EXISTS ix_todo_columns_column_id"))
                                 trans.commit()
-                                print("   ✅ Removed old unique index on column_id")
                             else:
                                 trans.commit()
                         except Exception as idx_error:
@@ -109,7 +126,6 @@ async def lifespan(app: FastAPI):
                                     UNIQUE (column_id, user_id)
                                 """))
                                 trans.commit()
-                                print("   ✅ Created composite unique constraint on (column_id, user_id)")
                             else:
                                 trans.commit()
                         except Exception as uq_error:
@@ -117,19 +133,11 @@ async def lifespan(app: FastAPI):
                             # Constraint may already exist - that's OK
                             pass
                         
-                        print("✅ Auto-migration completed: user_id column added to todo_columns")
-                    except Exception as e:
+                    except Exception:
                         trans.rollback()
-                        print(f"⚠️  Auto-migration failed: {e}")
-                        import traceback
-                        traceback.print_exc()
-                        print("💡 Please run migration manually (see QUICK_MIGRATION.md)")
-    except Exception as e:
-        print(f"⚠️  Error checking/auto-migrating todo_columns: {e}")
-    
-    # Initialize upload directory
+    except Exception:
+        pass
     ensure_upload_dir()
-    print("✅ Upload directory initialized")
     # Initialize default admin and default users
     await init_default_admin()
     await init_default_users()
@@ -140,7 +148,7 @@ async def lifespan(app: FastAPI):
         # Normal shutdown - don't log as error
         pass
     finally:
-        print("👋 Shutting down application...")
+        pass
 
 
 # Create FastAPI app
@@ -149,9 +157,6 @@ app = FastAPI(
     version=settings.APP_VERSION,
     lifespan=lifespan,
 )
-
-# Configure CORS - Allow all origins
-print("🌐 CORS configured: All origins allowed")
 
 # Add explicit CORS middleware
 app.add_middleware(
@@ -172,6 +177,10 @@ app.include_router(inventory.router, prefix=settings.API_V1_PREFIX)
 app.include_router(todos.router, prefix=settings.API_V1_PREFIX)
 app.include_router(websocket.router, prefix=settings.API_V1_PREFIX)
 app.include_router(telegram.router, prefix=settings.API_V1_PREFIX)
+# Отчёт посещений с устройства Hikvision (ТЗ face-control)
+app.include_router(report.router, prefix="/report")
+# Путь для фронта (прокси /api-attendance -> backend)
+app.include_router(report.router, prefix="/api-attendance/report")
 
 # Mount static files for uploads (ensure directory exists before mount)
 ensure_upload_dir()

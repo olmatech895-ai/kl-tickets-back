@@ -82,6 +82,9 @@ class TodoRepositoryDB(TodoRepository):
             read=model.read,
             project=model.project,
             due_date=model.due_date,
+            all_day=getattr(model, "all_day", False),
+            notify_when_due=getattr(model, "notify_when_due", False),
+            calendar_only=getattr(model, "calendar_only", False),
             created_by=str(model.created_by),
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -100,6 +103,9 @@ class TodoRepositoryDB(TodoRepository):
             read=todo.read,
             project=todo.project,
             due_date=todo.due_date,
+            all_day=getattr(todo, "all_day", False),
+            notify_when_due=getattr(todo, "notify_when_due", False),
+            calendar_only=getattr(todo, "calendar_only", False),
             background_image=todo.background_image,
             created_by=todo.created_by,
             created_at=todo.created_at,
@@ -254,6 +260,9 @@ class TodoRepositoryDB(TodoRepository):
         todo_model.read = todo.read
         todo_model.project = todo.project
         todo_model.due_date = todo.due_date
+        todo_model.all_day = getattr(todo, "all_day", False)
+        todo_model.notify_when_due = getattr(todo, "notify_when_due", False)
+        todo_model.calendar_only = getattr(todo, "calendar_only", False)
         todo_model.background_image = todo.background_image
         todo_model.updated_at = todo.updated_at
 

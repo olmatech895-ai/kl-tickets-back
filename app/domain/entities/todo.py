@@ -57,6 +57,9 @@ class Todo:
     read: bool = True
     project: Optional[str] = None
     due_date: Optional[datetime] = None
+    all_day: bool = False          # True = задача на весь день (блок «ВЕСЬ ДЕНЬ»); False = по часам
+    notify_when_due: bool = False  # Уведомить, когда подойдёт время (события в календаре)
+    calendar_only: bool = False    # True = только календарь; False = календарь + доска
     created_by: str = ""
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

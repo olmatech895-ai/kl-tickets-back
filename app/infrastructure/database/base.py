@@ -1,39 +1,27 @@
 """Database base configuration"""
 
-import sys
-
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 from app.infrastructure.config.settings import settings
 
-# Get database URL
 try:
     database_url = settings.get_database_url()
 except Exception as e:
-    print(f"❌ Error getting database URL: {e}")
-    sys.exit(1)
+    raise RuntimeError(f"Не удалось сформировать DATABASE_URL. Проверьте .env: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD (или DATABASE_URL). Ошибка: {e}") from e
 
-# Create database engine with appropriate connect_args
 try:
     if settings.DATABASE_TYPE == "postgresql":
-        # PostgreSQL doesn't need check_same_thread
-        print(
-            f"🔌 Connecting to PostgreSQL database: {settings.DB_NAME}@{settings.DB_HOST}:{settings.DB_PORT}"
-        )
         engine = create_engine(
             database_url,
-            pool_pre_ping=True,  # Verify connections before using
+            pool_pre_ping=True,
             pool_size=10,
             max_overflow=20,
         )
-        # Test connection
-        with engine.connect() as conn:
-            print("✅ PostgreSQL connection successful!")
+        with engine.connect():
+            pass
     elif settings.DATABASE_TYPE == "sqlite":
-        # SQLite needs check_same_thread=False
-        print(f"🔌 Using SQLite database: {database_url}")
         engine = create_engine(
             database_url,
             connect_args={"check_same_thread": False},
@@ -41,17 +29,9 @@ try:
     else:
         raise ValueError(f"Unsupported database type: {settings.DATABASE_TYPE}")
 except Exception as e:
-    print(f"❌ Database connection error: {e}")
-    print(f"\n💡 Troubleshooting:")
-    print(f"   1. Check if PostgreSQL is running")
-    print(f"   2. Verify database credentials in .env file:")
-    print(f"      DB_HOST={settings.DB_HOST}")
-    print(f"      DB_PORT={settings.DB_PORT}")
-    print(f"      DB_NAME={settings.DB_NAME}")
-    print(f"      DB_USER={settings.DB_USER}")
-    print(f"   3. Make sure database '{settings.DB_NAME}' exists")
-    print(f"   4. Check PostgreSQL password for user '{settings.DB_USER}'")
-    sys.exit(1)
+    raise RuntimeError(
+        f"Подключение к БД не удалось. Проверьте: PostgreSQL запущен, в .env указаны DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD (или полный DATABASE_URL). Ошибка: {e}"
+    ) from e
 
 # Create session factory
 # autocommit=False means we need to explicitly commit transactions
@@ -78,8 +58,7 @@ def get_db():
         yield db
         # Don't commit here - repositories handle their own commits
         # This ensures that commits happen before the response is sent
-    except Exception as e:
-        print(f"❌ Database session error: {e}")
+    except Exception:
         db.rollback()
         raise
     finally:
@@ -101,13 +80,10 @@ def init_db():
                 try:
                     conn.execute(text("ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL"))
                     trans.commit()
-                    print("✅ users.password_hash: NOT NULL constraint removed")
                 except Exception as inner:
                     trans.rollback()
                     raise inner
         except Exception as e:
             err = str(e).lower()
             if "does not exist" in err or "not have a not null" in err or "constraint" in err:
-                pass  # Already nullable
-            else:
-                print(f"⚠️ Migration password_hash nullable: {e}")
+                pass

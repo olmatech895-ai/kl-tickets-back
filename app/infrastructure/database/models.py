@@ -242,6 +242,9 @@ class TodoModel(Base):
     read = Column(Boolean, default=True, nullable=False)
     project = Column(String(100), nullable=True)
     due_date = Column(DateTime, nullable=True)
+    all_day = Column(Boolean, default=False, nullable=False)
+    notify_when_due = Column(Boolean, default=False, nullable=False)
+    calendar_only = Column(Boolean, default=False, nullable=False)
     background_image = Column(Text, nullable=True)
 
     # Foreign key to user (created by)
